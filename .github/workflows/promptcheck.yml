@@ -10,7 +10,7 @@ env:
   # https://promptchecksaas.vercel.app/dashboard/new (or use an existing
   # one), then copy its ID from the suite's URL:
   # /dashboard/suites/<this-part-is-the-suite-id>
-  SUITE_ID: REPLACE_WITH_YOUR_SUITE_ID
+  SUITE_ID: 2a668d39-2738-4cc3-bc4d-2f3bc405fd15
 
 jobs:
   regression-check:
