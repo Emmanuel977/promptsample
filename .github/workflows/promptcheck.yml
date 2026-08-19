@@ -1,0 +1,73 @@
+name: promptcheck
+
+on:
+  push:
+  pull_request:
+
+env:
+  API_URL: https://promptchecksaas.vercel.app
+  # TODO: replace with your actual suite ID. Create a suite at
+  # https://promptchecksaas.vercel.app/dashboard/new (or use an existing
+  # one), then copy its ID from the suite's URL:
+  # /dashboard/suites/<this-part-is-the-suite-id>
+  SUITE_ID: REPLACE_WITH_YOUR_SUITE_ID
+
+jobs:
+  regression-check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Run promptcheck suite
+        id: promptcheck
+        run: |
+          set -euo pipefail
+
+          BRANCH="${GITHUB_HEAD_REF:-${GITHUB_REF_NAME:-}}"
+
+          BODY=$(jq -n \
+            --arg branch "$BRANCH" \
+            --arg commitSha "$GITHUB_SHA" \
+            '{branch: $branch, commitSha: $commitSha}')
+
+          HTTP_STATUS=$(curl -sS -o /tmp/response.json -w "%{http_code}" \
+            -X POST "$API_URL/api/v1/suites/$SUITE_ID/run" \
+            -H "Authorization: Bearer ${{ secrets.PROMPTCHECK_TOKEN }}" \
+            -H "content-type: application/json" \
+            -d "$BODY")
+
+          if [ "$HTTP_STATUS" -ge 400 ]; then
+            echo "::error::promptcheck run failed (HTTP $HTTP_STATUS)"
+            cat /tmp/response.json
+            exit 1
+          fi
+
+          PASS_COUNT=$(jq -r '.run.passCount' /tmp/response.json)
+          FAIL_COUNT=$(jq -r '.run.failCount' /tmp/response.json)
+          REGRESSION_COUNT=$(jq -r '.run.regressionCount' /tmp/response.json)
+          REGRESSION_DETECTED=$(jq -r '.regressionDetected' /tmp/response.json)
+          REPORT_URL=$(jq -r '.reportUrl' /tmp/response.json)
+
+          {
+            echo "## promptcheck results"
+            echo ""
+            echo "| | |"
+            echo "|---|---|"
+            echo "| Passed | $PASS_COUNT |"
+            echo "| Failed | $FAIL_COUNT |"
+            echo "| Regressions vs baseline | $REGRESSION_COUNT |"
+            echo ""
+            if [ "$REGRESSION_COUNT" -gt 0 ]; then
+              echo "### Regressed test cases"
+              echo ""
+              jq -r '.results[] | select(.regression == true) | "- **\(.testKey)** — score \(.score) — \(.reason)"' /tmp/response.json
+              echo ""
+            fi
+            echo "[Full report]($REPORT_URL)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+          echo "promptcheck: $PASS_COUNT passed, $FAIL_COUNT failed, $REGRESSION_COUNT regressed vs baseline."
+          echo "Full report: $REPORT_URL"
+
+          if [ "$REGRESSION_DETECTED" = "true" ]; then
+            echo "::error::Regression detected against baseline — see the summary above for details."
+            exit 1
+          fi
