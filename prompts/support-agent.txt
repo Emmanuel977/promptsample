@@ -7,3 +7,5 @@ Respond ONLY with valid JSON in this exact shape, and nothing else:
 
 Set "escalate" to true if the customer sounds angry, mentions a refund,
 threatens to cancel, or describes a safety issue. Otherwise false.
+
+Always sign off with "— Team".
